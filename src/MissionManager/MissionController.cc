@@ -346,9 +346,10 @@ VisualMissionItem* MissionController::insertTakeoffItem(QGeoCoordinate /*coordin
 }
 
 bool MissionController::multipleLandPatternsAllowed(void) const {
-    // Can't have more than one land sequence unless allowed in settings and
-    // supported by the firmware
-    return _planViewSettings->allowMultipleLandingPatterns()
+    // Multiple landing sequences are a fixed-wing/VTOL landing pattern concept.
+    // Other vehicle types insert RTL, which only makes sense once per mission.
+    return (_controllerVehicle->fixedWing() || _controllerVehicle->vtol()) &&
+           _planViewSettings->allowMultipleLandingPatterns()
                ->rawValue().toBool() &&
            !_masterController->managerVehicle()->px4Firmware();
 }
@@ -362,7 +363,7 @@ VisualMissionItem* MissionController::insertLandItem(QGeoCoordinate coordinate, 
         VTOLLandingComplexItem* vtolLanding = qobject_cast<VTOLLandingComplexItem*>(insertComplexMissionItem(VTOLLandingComplexItem::canonicalName, coordinate, visualItemIndex, makeCurrentItem));
         return vtolLanding;
     } else {
-        return _insertSimpleMissionItemWorker(coordinate, _controllerVehicle->vtol() ? MAV_CMD_NAV_VTOL_LAND : MAV_CMD_NAV_RETURN_TO_LAUNCH, visualItemIndex, makeCurrentItem);
+        return _insertSimpleMissionItemWorker(coordinate, MAV_CMD_NAV_RETURN_TO_LAUNCH, visualItemIndex, makeCurrentItem);
     }
 }
 
@@ -1094,8 +1095,8 @@ void MissionController::_recalcFlightPathSegments(void)
                     }
 
                     lastSegmentVisualItemPair =  VisualItemPair(lastFlyThroughVI, visualItem);
-                    SimpleMissionItem* lastSimpleItem = qobject_cast<SimpleMissionItem*>(lastFlyThroughVI);
-                    bool mavlinkTerrainFrame = lastSimpleItem ? lastSimpleItem->missionItem().frame() == MAV_FRAME_GLOBAL_TERRAIN_ALT : false;
+                    // A leg is flown in its destination item's frame (ArduPilot AC_WPNav)
+                    bool mavlinkTerrainFrame = simpleItem ? simpleItem->missionItem().frame() == MAV_FRAME_GLOBAL_TERRAIN_ALT : false;
                     FlightPathSegment* segment = _addFlightPathSegment(oldSegmentTable, lastSegmentVisualItemPair, mavlinkTerrainFrame);
                     segment->setSpecialVisual(roiActive);
                     if (addDirectionArrow) {
@@ -1573,6 +1574,9 @@ void MissionController::_initVisualItem(VisualMissionItem* visualItem)
         SimpleMissionItem* simpleItem = qobject_cast<SimpleMissionItem*>(visualItem);
         if (simpleItem) {
             connect(&simpleItem->missionItem()._commandFact, &Fact::valueChanged, this, &MissionController::_itemCommandChanged);
+            // The altitude frame drives segmentTypeForPair, and segment type is immutable once created
+            connect(simpleItem, &SimpleMissionItem::altitudeFrameChanged, this,
+                    &MissionController::_recalcFlightPathSegmentsSignal, Qt::QueuedConnection);
         } else {
             qWarning() << "isSimpleItem == true, yet not SimpleMissionItem";
         }

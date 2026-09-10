@@ -30,15 +30,27 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_
 
 message(STATUS "QGC: Building MAVLink")
 
+include(CPMPatchCache)
+
+set(_mavlink_patch "${CMAKE_CURRENT_LIST_DIR}/mavlink-deterministic-mavgen.patch")
+qgc_cpm_patch_cache_key(
+    _mavlink_cache_key
+    GIT_REPOSITORY "${QGC_MAVLINK_GIT_REPO}"
+    GIT_TAG "${QGC_MAVLINK_GIT_TAG}"
+    PATCHES "${_mavlink_patch}"
+)
+
 CPMAddPackage(
     NAME mavlink
     GIT_REPOSITORY ${QGC_MAVLINK_GIT_REPO}
     GIT_TAG ${QGC_MAVLINK_GIT_TAG}
+    # CPM's default source-cache key does not hash PATCHES file contents.
+    CUSTOM_CACHE_KEY "${_mavlink_cache_key}"
     OPTIONS
         "MAVLINK_DIALECT ${QGC_MAVLINK_DIALECT}"
         "MAVLINK_VERSION ${QGC_MAVLINK_VERSION}"
     # Retry upstream's build-time pip install and make mavgen hashes deterministic.
-    PATCHES mavlink-deterministic-mavgen.patch
+    PATCHES "${_mavlink_patch}"
 )
 
 qgc_require_cpm_added(mavlink)
@@ -59,7 +71,7 @@ add_custom_command(
     OUTPUT "${MAVLINK_ENUMS_H}" "${MAVLINK_ENUMS_QML_H}" "${MAVLINK_ENUMS_QML_CC}"
     COMMAND Python3::Interpreter "${MAVLINK_ENUMS_GENERATOR}" "${mavlink_BINARY_DIR}/include/mavlink"
             "${MAVLINK_ENUMS_H}" "${MAVLINK_ENUMS_QML_H}" "${MAVLINK_ENUMS_QML_CC}"
-    DEPENDS mavlink "${MAVLINK_ENUMS_GENERATOR}"
+    DEPENDS mavlink "${MAVLINK_ENUMS_GENERATOR}" "${CMAKE_SOURCE_DIR}/tools/common/io.py"
     COMMENT "Generating MAVLinkEnums.h + MAVLinkEnumsQml.{h,cc}"
     VERBATIM
 )
@@ -86,6 +98,7 @@ add_custom_command(
     COMMAND Python3::Interpreter "${MAVLINK_INSTANCE_FIELDS_GENERATOR}"
             "${MAVLINK_XML_DIR}" "${QGC_MAVLINK_DIALECT}" "${MAVLINK_INSTANCE_FIELDS_H}"
     DEPENDS mavlink "${MAVLINK_INSTANCE_FIELDS_GENERATOR}"
+            "${CMAKE_SOURCE_DIR}/tools/common/io.py" "${CMAKE_SOURCE_DIR}/tools/common/xml.py"
     COMMENT "Generating MAVLinkInstanceFields.h"
     VERBATIM
 )
